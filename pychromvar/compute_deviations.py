@@ -46,7 +46,7 @@ def compute_deviations(data: Union[AnnData, MuData], n_jobs=-1, chunk_size:int=1
     # compute background deviations for bias-correction
     n_bg_peaks = adata.varm['bg_peaks'].shape[1]
     if gpu:
-        motif_match = torch.tensor(adata.varm['motif_match'], device = 'cuda')
+        motif_match = torch.tensor(adata.varm['motif_match'], device = 'cuda', dtype=torch.float32)
         obs_dev = torch.zeros(size=(adata.n_obs, motif_match.shape[1]), dtype=torch.float32, device = 'cuda')
         bg_dev = torch.zeros(size=(n_bg_peaks, adata.n_obs, len(
             adata.uns['motif_name'])), dtype=torch.float32, device = 'cuda')
@@ -69,8 +69,8 @@ def compute_deviations(data: Union[AnnData, MuData], n_jobs=-1, chunk_size:int=1
 
         for i in tqdm(range(n_bg_peaks), position=1, leave=False, ncols=80, desc="bg"):
             if gpu:
-                bg_peak_idx = torch.tensor(adata.varm['bg_peaks'][:, i], device = 'cuda')
-                bg_motif_match = torch.tensor(adata.varm['motif_match'][bg_peak_idx, :], device = 'cuda')
+                bg_peak_idx = adata.varm['bg_peaks'][:, i]
+                bg_motif_match = torch.tensor(adata.varm['motif_match'][bg_peak_idx, :], device = 'cuda', dtype=torch.float32)
                 bg_dev[i, start:end, :] = _compute_deviations_gpu((bg_motif_match, X, expectation_obs[start:end], expectation_var))
             else:
                 bg_peak_idx = adata.varm['bg_peaks'][:, i]
@@ -113,13 +113,16 @@ def _compute_deviations_gpu(arguments):
     motif_match, count, expectation_obs, expectation_var = arguments
     ### motif_match: n_var x n_motif
     ### count, exp: n_obs x n_var
-    observed = count.dot(motif_match)
-    expected = expectation_obs.dot(expectation_var.dot(motif_match))
+    observed = torch.matmul(count, motif_match)
+    #observed = count.dot(motif_match)
+    
+    expected = torch.matmul(expectation_obs, torch.matmul(expectation_var, motif_match))
+    #expected = expectation_obs.dot(expectation_var.dot(motif_match))
     #if sparse.issparse(observed):
     #    observed = observed.todense()
     #if sparse.issparse(expected):
     #    expected = expected.todense()
-    out = np.zeros(expected.shape, dtype=expected.dtype, device = 'cuda')
+    out = torch.zeros(expected.shape, dtype=expected.dtype, device = 'cuda')
     torch.div(observed - expected, expected, out=out)
     out[expected == 0] = 0
     return out
@@ -147,4 +150,3 @@ def compute_expectation(count: Union[np.array, sparse.csr_matrix], return_torch 
         return torch.tensor(b, device = 'cuda'), torch.tensor(a, device = 'cuda')
     else:
         return b, a
-
