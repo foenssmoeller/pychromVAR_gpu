@@ -62,7 +62,7 @@ def compute_deviations(data: Union[AnnData, MuData], n_jobs=-1, chunk_size:int=1
         if gpu:
             if sparse.issparse(X):
                 X = X.todense()
-            X = torch.tensor(X, device = 'cuda')
+            X = torch.tensor(X, device = 'cuda', dtype=torch.float32)
             obs_dev[start:end, :] = _compute_deviations_gpu((motif_match, X, expectation_obs[start:end], expectation_var))
         else: 
             obs_dev[start:end, :] = _compute_deviations((motif_match, X, expectation_obs[start:end], expectation_var))
